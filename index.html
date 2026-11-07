@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Otaku AI</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#080b12">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Otaku AI">
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    /* Extras da versão com Kitsu + TVMaze (carregam depois do style.css) */
+    [hidden] { display: none !important; }
+
+    .real-poster { background-size: cover; background-position: center; }
+
+    .loading, .error {
+      grid-column: 1 / -1;
+      color: #8d93a1;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 20px 0;
+    }
+
+    .anime-card { cursor: pointer; }
+    .poster { position: relative; }
+    .anime-card.na-lista .poster { box-shadow: 0 0 0 2px #7c3aed; }
+    .anime-card.na-lista .poster::after {
+      content: "✅";
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 14px;
+    }
+
+    .search-box { display: none; padding: 0 12px 12px; }
+    .search-box.show { display: block; }
+    .search-row { display: flex; gap: 8px; }
+    .search-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #292238;
+      background: #151923;
+      color: #fff;
+      font-size: 14px;
+    }
+    .filters { display: flex; gap: 8px; margin-top: 10px; }
+    .filters button {
+      background: #151923;
+      color: #a8acb7;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+    .filters .filter-active { background: #7c3aed; color: #fff; }
+
+    .back-btn { background: none; color: #a78bfa; font-size: 15px; margin-bottom: 14px; }
+    .details-top { display: flex; gap: 14px; }
+    .details-poster {
+      width: 120px;
+      flex-shrink: 0;
+      aspect-ratio: 2 / 3;
+      border-radius: 12px;
+      background-color: #182033;
+    }
+    .details-title { font-size: 20px; margin-bottom: 8px; }
+    .details-meta { color: #a8acb7; font-size: 13px; margin-top: 4px; }
+    .details-desc { color: #c5c8d0; font-size: 14px; line-height: 1.6; margin: 16px 0; }
+
+    .genre-bar { overflow-x: auto; margin: 0 0 14px; padding-bottom: 6px; }
+    .genre-bar button { flex-shrink: 0; white-space: nowrap; }
+    .more-btn {
+      display: block;
+      width: 100%;
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #151923;
+      color: #c4b5fd;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .more-btn:disabled { opacity: 0.6; }
+  </style>
+</head>
+
+<body>
+
+  <header class="topbar">
+    <div class="logo"><span>OTAKU</span><strong>AI</strong></div>
+    <button class="search-btn" onclick="toggleSearch()">🔍</button>
+  </header>
+
+  <div id="search-box" class="search-box">
+    <div class="search-row">
+      <input id="search-input" type="search" placeholder="Procurar anime ou dorama...">
+      <button class="primary-btn" onclick="performSearch()">Ir</button>
+    </div>
+    <div id="content-filter" class="filters">
+      <button data-type="all" class="filter-active">Tudo</button>
+      <button data-type="anime">Animes</button>
+      <button data-type="dorama">Doramas</button>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="home-page" class="page">
+
+      <section class="hero">
+        <div class="hero-content">
+          <span class="badge">ANIME • DORAMA • IA</span>
+          <h1>Descobre o teu próximo anime.</h1>
+          <p>Encontra animes e doramas que combinam com os teus gostos e organiza a tua jornada otaku.</p>
+          <button class="primary-btn" onclick="startExploring()">Explorar</button>
+        </div>
+      </section>
+
+      <section class="section catalog-section">
+        <div class="section-title"><h2>🔥 Destaques</h2><button onclick="openExplore()">Ver todos</button></div>
+        <div id="featured-list" class="anime-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title"><h2>🎭 Doramas em alta</h2></div>
+        <div id="dorama-list" class="anime-grid"></div>
+      </section>
+
+      <section id="ai-section" class="ai-section">
+        <span class="ai-label">🤖 OTAKU AI</span>
+        <h2>Não sabes o que assistir?</h2>
+        <p>Diz-nos os géneros que gostas (ex.: ação, comédia, romance) e a IA recomenda animes.</p>
+        <div class="search-row">
+          <input id="ai-input" type="text" placeholder="ação e drama...">
+          <button class="ai-btn" onclick="askAI()">Recomendar</button>
+        </div>
+      </section>
+
+    </div>
+
+    <div id="explore-page" class="page" hidden>
+      <section class="section">
+        <div class="section-title"><h2>🔎 Explorar</h2></div>
+        <div id="genre-bar" class="filters genre-bar"></div>
+        <div id="explore-list" class="anime-grid"></div>
+        <button id="more-btn" class="more-btn" onclick="loadMore()" hidden>Ver mais</button>
+      </section>
+    </div>
+
+    <div id="results-page" class="page" hidden>
+      <section class="section">
+        <div class="section-title"><h2 id="results-title">Resultados</h2></div>
+        <div id="results-list" class="anime-grid"></div>
+      </section>
+    </div>
+
+    <div id="details-page" class="page" hidden>
+      <section class="section" id="details-content"></section>
+    </div>
+
+    <div id="library-page" class="page" hidden>
+      <section class="section">
+        <div class="section-title"><h2>📚 Minha Lista</h2></div>
+        <div id="library-list" class="anime-grid"></div>
+      </section>
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="active" onclick="goHome()">🏠<span>Início</span></button>
+    <button onclick="openDiscover()">🔎<span>Descobrir</span></button>
+    <button onclick="openAI()">🤖<span>Otaku AI</span></button>
+    <button onclick="openLibrary()">📚<span>Minha Lista</span></button>
+  </nav>
+
+  <script src="app.js"></script>
+
+</body>
+</html>
