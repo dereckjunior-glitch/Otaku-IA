@@ -1,4 +1,4 @@
-const KITSU_API = "https://kitsu.io/api/edge";
+const ANILIST_API = "https://graphql.anilist.co";
 const TVMAZE_API = "https://api.tvmaze.com";
 
 // Doramas populares (o TVMaze é um catálogo geral de séries, por isso usamos nomes)
@@ -15,43 +15,89 @@ const DORAMAS_POPULARES = [
 
 const IDIOMAS_DORAMA = ["Korean", "Japanese", "Chinese", "Mandarin", "Thai"];
 
-// Botões de género da página Explorar (slug da Kitsu; "dorama" = lista de doramas)
+// Botões de género da página Explorar (nome do género no AniList; "dorama" = lista de doramas)
 const GENEROS_CHIPS = [
   { nome: "Todos", slug: "" },
-  { nome: "Ação", slug: "action" },
-  { nome: "Aventura", slug: "adventure" },
-  { nome: "Comédia", slug: "comedy" },
-  { nome: "Drama", slug: "drama" },
-  { nome: "Fantasia", slug: "fantasy" },
-  { nome: "Romance", slug: "romance" },
-  { nome: "Terror", slug: "horror" },
-  { nome: "Mistério", slug: "mystery" },
-  { nome: "Ficção científica", slug: "science-fiction" },
-  { nome: "Desporto", slug: "sports" },
-  { nome: "Sobrenatural", slug: "supernatural" },
-  { nome: "Cotidiano", slug: "slice-of-life" },
-  { nome: "Suspense", slug: "thriller" },
+  { nome: "Ação", slug: "Action" },
+  { nome: "Aventura", slug: "Adventure" },
+  { nome: "Comédia", slug: "Comedy" },
+  { nome: "Drama", slug: "Drama" },
+  { nome: "Fantasia", slug: "Fantasy" },
+  { nome: "Romance", slug: "Romance" },
+  { nome: "Terror", slug: "Horror" },
+  { nome: "Mistério", slug: "Mystery" },
+  { nome: "Ficção científica", slug: "Sci-Fi" },
+  { nome: "Desporto", slug: "Sports" },
+  { nome: "Sobrenatural", slug: "Supernatural" },
+  { nome: "Cotidiano", slug: "Slice of Life" },
+  { nome: "Suspense", slug: "Thriller" },
   { nome: "🎭 Doramas", slug: "dorama" }
+];
+
+// Filtros da secção Doramas (precisam do servidor com a chave do TMDB)
+const PAISES_DORAMA = [
+  { nome: "🇰🇷 Coreia", idioma: "ko" },
+  { nome: "🇯🇵 Japão", idioma: "ja" },
+  { nome: "🇨🇳 China", idioma: "zh" },
+  { nome: "🇹🇭 Tailândia", idioma: "th" }
+];
+
+const GENEROS_DORAMA = [
+  { nome: "Todos", id: "" },
+  { nome: "Drama", id: "18" },
+  { nome: "Comédia", id: "35" },
+  { nome: "Mistério", id: "9648" },
+  { nome: "Crime", id: "80" },
+  { nome: "Ação e aventura", id: "10759" },
+  { nome: "Ficção e fantasia", id: "10765" },
+  { nome: "Família", id: "10751" }
 ];
 
 const POR_PAGINA = 12;
 
-// Palavras que a Otaku AI reconhece -> categoria da Kitsu
+// Palavras que a Otaku AI reconhece -> género do AniList
 const CATEGORIAS = {
-  acao: "action",
-  aventura: "adventure",
-  comedia: "comedy",
-  drama: "drama",
-  fantasia: "fantasy",
-  terror: "horror",
-  misterio: "mystery",
-  romance: "romance",
-  ficcao: "science-fiction",
-  desporto: "sports",
-  esporte: "sports",
-  sobrenatural: "supernatural",
-  cotidiano: "slice-of-life",
-  suspense: "thriller"
+  acao: "Action",
+  aventura: "Adventure",
+  comedia: "Comedy",
+  drama: "Drama",
+  fantasia: "Fantasy",
+  terror: "Horror",
+  misterio: "Mystery",
+  romance: "Romance",
+  ficcao: "Sci-Fi",
+  desporto: "Sports",
+  esporte: "Sports",
+  sobrenatural: "Supernatural",
+  cotidiano: "Slice of Life",
+  suspense: "Thriller"
+};
+
+// Traduções para a página de detalhes
+const GENERO_PT = {
+  Action: "Ação", Adventure: "Aventura", Comedy: "Comédia", Drama: "Drama",
+  Fantasy: "Fantasia", Horror: "Terror", Mystery: "Mistério", Romance: "Romance",
+  "Science Fiction": "Ficção científica", Sports: "Desporto",
+  Supernatural: "Sobrenatural", "Slice of Life": "Cotidiano", Thriller: "Suspense",
+  Psychological: "Psicológico", Crime: "Crime", Family: "Família", Music: "Música",
+  Medical: "Médico", War: "Guerra", History: "História", Military: "Militar",
+  Mecha: "Mecha", Magic: "Magia", School: "Escola", "School Life": "Vida escolar",
+  "Sci-Fi": "Ficção científica", "Mahou Shoujo": "Mahou shoujo", Ecchi: "Ecchi"
+};
+
+const ESTADO_PT = {
+  finished: "Finalizado", current: "Em exibição", upcoming: "Em breve",
+  tba: "Por anunciar", unreleased: "Por lançar",
+  Ended: "Terminado", Running: "Em exibição",
+  "To Be Determined": "Por definir", "In Development": "Em desenvolvimento",
+  "Returning Series": "Em exibição", Canceled: "Cancelado",
+  "In Production": "Em produção", Planned: "Planeado",
+  FINISHED: "Finalizado", RELEASING: "Em exibição", NOT_YET_RELEASED: "Em breve",
+  CANCELLED: "Cancelado", HIATUS: "Em pausa"
+};
+
+const TIPO_PT = {
+  TV: "Série", movie: "Filme", OVA: "OVA", ONA: "ONA", special: "Especial", music: "Música", TV_SHORT: "Série curta", MOVIE: "Filme", SPECIAL: "Especial", MUSIC: "Música"
 };
 
 let currentType = "all";
@@ -60,6 +106,16 @@ let lastPage = "home";
 let homeLoaded = false;
 let pedido = 0;
 let explorar = null;
+let filtroDorama = { idioma: "ko", genero: "" };
+let chat = [];
+let chatOcupado = false;
+let chatAviso = "";
+
+const SUGESTOES_CHAT = [
+  "Algo parecido com Death Note",
+  "Anime curto para o fim de semana",
+  "Dorama romântico e leve"
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -91,6 +147,35 @@ function cleanHTML(html) {
 
 function https(url) {
   return String(url || "").replace(/^http:/, "https:");
+}
+
+// O servidor (Cloudflare Worker) é configurado no arquivo config.js
+function temServidor() {
+  return typeof IA_URL !== "undefined" && String(IA_URL).startsWith("https://");
+}
+
+function servidorUrl(caminho) {
+  return String(IA_URL).replace(/\/+$/, "") + caminho;
+}
+
+// Título "base" (sem "Season 2", "Part 2"...) para esconder temporadas repetidas
+function baseTitulo(titulo) {
+  return normalizar(titulo)
+    .replace(/\b(\d+(st|nd|rd|th)|first|second|third|final)\s+season\b/g, "")
+    .replace(/\bseason\s*\d+\b/g, "")
+    .replace(/\b(part|cour)\s*\d+\b/g, "")
+    .replace(/\b(ii|iii|iv)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function semRepetidos(itens, vistos = new Set()) {
+  return itens.filter((i) => {
+    const base = baseTitulo(i.title);
+    if (vistos.has(base)) return false;
+    vistos.add(base);
+    return true;
+  });
 }
 
 async function getJSON(url) {
@@ -142,42 +227,107 @@ function toggleSaved(item) {
 
 
 /* ===============================
-   ANIMES (Kitsu)
+   ANIMES (AniList)
 ================================ */
 
-function toAnimeItem(item) {
-  const a = item.attributes || {};
-  const t = a.titles || {};
-  const nota = parseFloat(a.averageRating);
+const ANILIST_QUERY = `
+query ($page: Int, $perPage: Int, $search: String, $genre: String, $sort: [MediaSort], $minPop: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage }
+    media(
+      type: ANIME
+      isAdult: false
+      search: $search
+      genre: $genre
+      sort: $sort
+      popularity_greater: $minPop
+      format_in: [TV, TV_SHORT, MOVIE, OVA, ONA]
+    ) {
+      id
+      title { romaji english }
+      coverImage { large }
+      description(asHtml: false)
+      averageScore
+      episodes
+      duration
+      status
+      format
+      genres
+      seasonYear
+      startDate { year }
+      trailer { id site }
+    }
+  }
+}`;
+
+// Sinopse do AniList: tira etiquetas HTML e partes escondidas (spoilers)
+function limparDescricao(texto) {
+  if (!texto) return "Sinopse não disponível.";
+
+  const limpo = cleanHTML(texto.replace(/<br\s*\/?>/gi, "\n"))
+    .replace(/~![\s\S]*?!~/g, "")
+    .trim();
+
+  return limpo || "Sinopse não disponível.";
+}
+
+function toAnilistItem(m) {
+  const nota = Number(m.averageScore);
 
   return {
-    key: "anime-" + item.id,
+    key: "anime-al-" + m.id,
     type: "anime",
-    title: t.en || t.en_jp || a.canonicalTitle || t.ja_jp || "Anime",
-    poster: https(a.posterImage?.large || a.posterImage?.medium),
-    description: a.synopsis || "Sinopse não disponível.",
-    score: isNaN(nota) ? "N/A" : (nota / 10).toFixed(1),
-    episodes: a.episodeCount || "N/A",
-    status: a.status || "N/A"
+    title: m.title?.english || m.title?.romaji || "Anime",
+    poster: https(m.coverImage?.large),
+    description: limparDescricao(m.description),
+    score: nota > 0 ? (nota / 10).toFixed(1) : "N/A",
+    episodes: m.episodes || "N/A",
+    status: m.status || "N/A",
+    year: String(m.seasonYear || m.startDate?.year || ""),
+    subtype: m.format || "",
+    runtime: m.duration || "",
+    trailer:
+      m.trailer?.site === "youtube" && m.trailer?.id
+        ? "https://www.youtube.com/watch?v=" + m.trailer.id
+        : "",
+    genres: (m.genres || []).map((g) => GENERO_PT[g] || g).slice(0, 5)
   };
 }
 
-async function getAnimePage(query = "", categoria = "", limit = 10, offset = 0) {
-  let url = KITSU_API + "/anime?page[limit]=" + limit + "&page[offset]=" + offset;
+async function anilist(variaveis) {
+  const resposta = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ query: ANILIST_QUERY, variables: variaveis })
+  });
 
-  if (query) {
-    url += "&filter[text]=" + encodeURIComponent(query);
-  } else {
-    if (categoria) url += "&filter[categories]=" + encodeURIComponent(categoria);
-    url += "&sort=-averageRating";
+  const json = await resposta.json().catch(() => ({}));
+
+  if (!resposta.ok || json.errors) {
+    throw new Error(json.errors?.[0]?.message || "AniList HTTP " + resposta.status);
   }
 
-  const result = await getJSON(url);
-  const dados = result.data || [];
+  return json.data.Page;
+}
+
+async function getAnimePage(query = "", categoria = "", limit = 10, offset = 0) {
+  const variaveis = {
+    page: Math.floor(offset / limit) + 1,
+    perPage: limit,
+    sort: [query ? "SEARCH_MATCH" : "SCORE_DESC"]
+  };
+
+  if (query) variaveis.search = query;
+  else variaveis.minPop = 30000;          // só animes conhecidos, para a lista não ter títulos obscuros
+  if (categoria) variaveis.genre = categoria;
+
+  const pagina = await anilist(variaveis);
+  const media = pagina.media || [];
 
   return {
-    total: dados.length,
-    itens: dados.filter((item) => !item.attributes?.nsfw).map(toAnimeItem)
+    total: media.length,
+    temMais: Boolean(pagina.pageInfo?.hasNextPage),
+    itens: media.map(toAnilistItem)
   };
 }
 
@@ -199,11 +349,40 @@ function toShowItem(show) {
     description: show.summary ? cleanHTML(show.summary) : "Sinopse não disponível.",
     score: show.rating?.average ? String(show.rating.average) : "N/A",
     episodes: "N/A",
-    status: show.status || "N/A"
+    status: show.status || "N/A",
+    year: show.premiered ? show.premiered.slice(0, 4) : "",
+    subtype: "TV",
+    network: show.network?.name || show.webChannel?.name || "",
+    genres: (show.genres || []).map((g) => GENERO_PT[g] || g).slice(0, 5)
   };
 }
 
+async function getDoramasTmdb({ pagina = 1, idioma = "ko", genero = "", q = "" } = {}) {
+  const params = new URLSearchParams({ pagina, idioma });
+  if (genero) params.set("genero", genero);
+  if (q) params.set("q", q);
+
+  const resposta = await fetch(servidorUrl("/dorama?" + params.toString()));
+  const dados = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) throw new Error(dados.detalhe || dados.erro || "HTTP " + resposta.status);
+
+  return { itens: dados.itens || [], totalPaginas: dados.total_paginas || 1 };
+}
+
 async function getDramas(query = "") {
+  if (temServidor()) {
+    try {
+      const r = await getDoramasTmdb({ q: query });
+      return query ? r.itens.slice(0, 12) : r.itens.slice(0, 9);
+    } catch (e) {
+      console.error("TMDB falhou, a usar a lista de reserva:", e);
+    }
+  }
+
+  return getDramasTvmaze(query);
+}
+
+async function getDramasTvmaze(query = "") {
   if (query) {
     const result = await getJSON(
       TVMAZE_API + "/search/shows?q=" + encodeURIComponent(query)
@@ -293,7 +472,7 @@ function renderResult(id, resultado, vazio) {
 ================================ */
 
 function showPage(nome) {
-  ["home", "results", "details", "library", "explore"].forEach((p) => {
+  ["home", "results", "details", "library", "explore", "ai"].forEach((p) => {
     $(p + "-page").hidden = p !== nome;
   });
 
@@ -323,7 +502,7 @@ async function loadHome() {
   showLoading("dorama-list", "Carregando doramas...");
 
   const [anime, dramas] = await Promise.allSettled([
-    getAnime("", "", 6),
+    getAnime("", "", 9).then((a) => semRepetidos(a).slice(0, 6)),
     getDramas()
   ]);
 
@@ -340,8 +519,49 @@ async function loadHome() {
 
 function openDetails(item) {
   showPage("details");
+  renderDetails(item);
+  enriquecerDorama(item);
+}
+
+// Doramas do TMDB: busca episódios, estado, canal e trailer ao abrir os detalhes
+async function enriquecerDorama(item) {
+  if (item.type !== "dorama" || !item.tmdbId || item.detalhado || !temServidor()) return;
+
+  try {
+    const resposta = await fetch(servidorUrl("/dorama/" + item.tmdbId));
+    const extra = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(extra.detalhe || extra.erro || "HTTP " + resposta.status);
+
+    Object.assign(item, extra, { detalhado: true });
+
+    if (!$("details-page").hidden && $("details-content").dataset.key === item.key) {
+      renderDetails(item);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderDetails(item) {
+  $("details-content").dataset.key = item.key;
 
   const tipo = item.type === "anime" ? "ANIME" : "DORAMA";
+  const subtipo = TIPO_PT[item.subtype] || "";
+  const linhas = [
+    subtipo ? tipo + " • " + subtipo : tipo,
+    "⭐ Nota: " + item.score,
+    item.year ? "📅 Ano: " + item.year : "",
+    item.episodes !== "N/A"
+      ? "🎞️ Episódios: " + item.episodes + (item.runtime ? " (" + item.runtime + " min)" : "")
+      : "",
+    item.network ? "📺 " + item.network : "",
+    "Estado: " + (ESTADO_PT[item.status] || item.status),
+    item.genres?.length ? "🏷️ " + item.genres.join(", ") : ""
+  ].filter(Boolean);
+  const trailer =
+    item.trailer ||
+    "https://www.youtube.com/results?search_query=" +
+      encodeURIComponent(item.title + " trailer");
   const desc =
     item.description.length > 700
       ? item.description.slice(0, 700) + "…"
@@ -357,15 +577,15 @@ function openDetails(item) {
       <div class="details-poster real-poster"${estilo}></div>
       <div>
         <h2 class="details-title">${escapeHTML(item.title)}</h2>
-        <p class="details-meta">${tipo}</p>
-        <p class="details-meta">⭐ Nota: ${escapeHTML(item.score)}</p>
-        <p class="details-meta">Episódios: ${escapeHTML(item.episodes)}</p>
-        <p class="details-meta">Estado: ${escapeHTML(item.status)}</p>
+        ${linhas.map((l) => `<p class="details-meta">${escapeHTML(l)}</p>`).join("")}
       </div>
     </div>
 
     <p class="details-desc">${escapeHTML(desc)}</p>
-    <button id="list-btn" class="primary-btn"></button>
+    <div class="details-actions">
+      <a class="trailer-btn" href="${escapeHTML(trailer)}" target="_blank" rel="noopener">▶ Trailer</a>
+      <button id="list-btn" class="primary-btn"></button>
+    </div>
   `;
 
   const botao = $("list-btn");
@@ -485,12 +705,11 @@ async function askAI() {
   );
   if (meu !== pedido) return;
 
-  const vistos = new Set();
-  const itens = respostas
+  const ordenados = respostas
     .filter((r) => r.status === "fulfilled")
     .flatMap((r) => r.value)
-    .filter((i) => !vistos.has(i.key) && vistos.add(i.key))
     .sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0));
+  const itens = semRepetidos(ordenados);
 
   const falhou = respostas.find((r) => r.status === "rejected");
 
@@ -503,12 +722,85 @@ async function askAI() {
 }
 
 function openAI() {
-  showPage("home");
+  showPage("ai");
   setNav(2);
-  if (!homeLoaded) loadHome();
+  renderChat();
+}
 
-  $("ai-section").scrollIntoView({ behavior: "smooth" });
-  $("ai-input").focus();
+
+/* ===============================
+   CHAT COM A IA (via servidor Cloudflare)
+================================ */
+
+function renderChat(pensando = false) {
+  const log = $("chat-log");
+
+  let html = "";
+
+  if (!chat.length) {
+    html += `<div class="chat-msg ia">Olá! Sou a Otaku AI 👋 Diz-me o que gostas de ver e eu recomendo animes e doramas.</div>`;
+    html += `<div class="chat-sugestoes">${SUGESTOES_CHAT.map(
+      (s) => `<button data-sugestao="${escapeHTML(s)}">${escapeHTML(s)}</button>`
+    ).join("")}</div>`;
+  }
+
+  chat.forEach((m) => {
+    const classe = m.role === "user" ? "eu" : "ia";
+    html += `<div class="chat-msg ${classe}">${escapeHTML(m.content).replace(/\n/g, "<br>")}</div>`;
+  });
+
+  if (pensando) html += `<div class="chat-msg ia">A pensar...</div>`;
+  if (chatAviso) html += `<div class="chat-aviso">${escapeHTML(chatAviso)}</div>`;
+
+  log.innerHTML = html;
+
+  log.querySelectorAll("[data-sugestao]").forEach((b) =>
+    b.addEventListener("click", () => sendChat(b.dataset.sugestao))
+  );
+
+  log.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+async function sendChat(textoPronto) {
+  const input = $("chat-input");
+  const texto = String(textoPronto || input.value).trim().slice(0, 500);
+  if (!texto || chatOcupado) return;
+
+  if (!temServidor()) {
+    chatAviso = "A IA ainda não está ligada: falta colocar o endereço do servidor no arquivo config.js.";
+    renderChat();
+    return;
+  }
+
+  chatOcupado = true;
+  chatAviso = "";
+  input.value = "";
+  chat.push({ role: "user", content: texto });
+  renderChat(true);
+
+  try {
+    const resposta = await fetch(IA_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mensagens: chat.slice(-10),
+        lista: lista.slice(0, 15).map((i) => i.title)
+      })
+    });
+
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(dados.detalhe || dados.erro || "HTTP " + resposta.status);
+
+    chat.push({ role: "assistant", content: dados.resposta });
+  } catch (e) {
+    console.error(e);
+    chat.pop();            // tira a pergunta que falhou e devolve o texto ao campo
+    input.value = texto;
+    chatAviso = "Não consegui falar com a IA. " + e.message;
+  }
+
+  chatOcupado = false;
+  renderChat();
 }
 
 
@@ -541,22 +833,63 @@ function buildChips() {
   });
 }
 
+function buildDoramaBars() {
+  PAISES_DORAMA.forEach((p) => {
+    const botao = document.createElement("button");
+    botao.textContent = p.nome;
+    botao.dataset.idioma = p.idioma;
+    botao.addEventListener("click", () => {
+      filtroDorama.idioma = p.idioma;
+      marcarDoramaBars();
+      selectGenre("dorama");
+    });
+    $("dorama-paises").appendChild(botao);
+  });
+
+  GENEROS_DORAMA.forEach((g) => {
+    const botao = document.createElement("button");
+    botao.textContent = g.nome;
+    botao.dataset.id = g.id;
+    botao.addEventListener("click", () => {
+      filtroDorama.genero = g.id;
+      marcarDoramaBars();
+      selectGenre("dorama");
+    });
+    $("dorama-generos").appendChild(botao);
+  });
+
+  marcarDoramaBars();
+}
+
+function marcarDoramaBars() {
+  document
+    .querySelectorAll("#dorama-paises button")
+    .forEach((b) => b.classList.toggle("filter-active", b.dataset.idioma === filtroDorama.idioma));
+
+  document
+    .querySelectorAll("#dorama-generos button")
+    .forEach((b) => b.classList.toggle("filter-active", b.dataset.id === filtroDorama.genero));
+}
+
 function openExplore() {
   showPage("explore");
   setNav(1);
 
   if (!explorar) {
     buildChips();
+    buildDoramaBars();
     selectGenre("");
   }
 }
 
 function selectGenre(slug) {
-  explorar = { slug, offset: 0, fim: false, carregando: false };
+  explorar = { slug, offset: 0, pagina: 1, fim: false, carregando: false, vistos: new Set() };
 
   document
     .querySelectorAll("#genre-bar button")
     .forEach((b) => b.classList.toggle("filter-active", b.dataset.slug === slug));
+
+  $("dorama-bar").hidden = !(slug === "dorama" && temServidor());
 
   loadMore();
 }
@@ -566,7 +899,7 @@ async function loadMore() {
   if (!estado || estado.carregando || estado.fim) return;
   estado.carregando = true;
 
-  const primeira = estado.offset === 0;
+  const primeira = estado.offset === 0 && estado.pagina === 1;
   const botao = $("more-btn");
 
   if (primeira) {
@@ -581,14 +914,23 @@ async function loadMore() {
   let itens = [];
 
   try {
-    if (estado.slug === "dorama") {
-      itens = await getDramas();
+    if (estado.slug === "dorama" && temServidor()) {
+      const r = await getDoramasTmdb({
+        pagina: estado.pagina,
+        idioma: filtroDorama.idioma,
+        genero: filtroDorama.genero
+      });
+      itens = r.itens;
+      estado.pagina += 1;
+      estado.fim = estado.pagina > r.totalPaginas;
+    } else if (estado.slug === "dorama") {
+      itens = await getDramasTvmaze();
       estado.fim = true;
     } else {
       const pagina = await getAnimePage("", estado.slug, POR_PAGINA, estado.offset);
-      itens = pagina.itens;
+      itens = semRepetidos(pagina.itens, estado.vistos);
       estado.offset += POR_PAGINA;
-      estado.fim = pagina.total < POR_PAGINA;
+      estado.fim = !pagina.temMais;
     }
   } catch (e) {
     erro = e;
@@ -647,6 +989,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("ai-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") askAI();
+  });
+
+  $("chat-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChat();
   });
 
   loadHome();
