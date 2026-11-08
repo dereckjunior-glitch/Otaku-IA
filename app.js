@@ -100,13 +100,33 @@ const TIPO_PT = {
   TV: "Série", movie: "Filme", OVA: "OVA", ONA: "ONA", special: "Especial", music: "Música", TV_SHORT: "Série curta", MOVIE: "Filme", SPECIAL: "Especial", MUSIC: "Música"
 };
 
+// Estados da Minha Lista e abas da página
+const ESTADOS_LISTA = [
+  { id: "quero", nome: "🕒 Quero ver" },
+  { id: "vendo", nome: "▶️ A ver" },
+  { id: "concluido", nome: "✅ Concluído" }
+];
+
+const ABAS_LISTA = [
+  { id: "todos", nome: "Todos" },
+  { id: "quero", nome: "🕒 Quero ver" },
+  { id: "vendo", nome: "▶️ A ver" },
+  { id: "concluido", nome: "✅ Concluídos" },
+  { id: "historico", nome: "🕘 Histórico" }
+];
+
+const MAX_HISTORICO = 30;
+
 let currentType = "all";
 let lista = loadList();
+let historico = loadHistory();
+let abaLista = "todos";
 let lastPage = "home";
 let homeLoaded = false;
 let pedido = 0;
 let explorar = null;
 let filtroDorama = { idioma: "ko", genero: "" };
+let tmdbIndisponivel = false;   // vira true se o servidor não tiver a chave do TMDB ou falhar
 let chat = [];
 let chatOcupado = false;
 let chatAviso = "";
@@ -211,18 +231,64 @@ function isSaved(key) {
   return lista.some((i) => i.key === key);
 }
 
+function estadoDe(key) {
+  return lista.find((i) => i.key === key)?.estado || "quero";
+}
+
+// Atualiza o selo (✅ 🕒 ▶️) de todos os cards deste título que estão na tela
+function atualizarCards(key) {
+  const salvo = isSaved(key);
+
+  document.querySelectorAll(`[data-key="${key}"]`).forEach((card) => {
+    card.classList.toggle("na-lista", salvo);
+    card.dataset.estado = salvo ? estadoDe(key) : "";
+  });
+}
+
 function toggleSaved(item) {
   const jaTem = isSaved(item.key);
 
   lista = jaTem
     ? lista.filter((i) => i.key !== item.key)
-    : [...lista, item];
+    : [...lista, { ...item, estado: "quero" }];
 
   saveList();
+  atualizarCards(item.key);
+}
 
-  document
-    .querySelectorAll(`[data-key="${item.key}"]`)
-    .forEach((card) => card.classList.toggle("na-lista", !jaTem));
+function definirEstado(item, estado) {
+  const salvo = lista.find((i) => i.key === item.key);
+  if (!salvo) return;
+
+  salvo.estado = estado;
+  saveList();
+  atualizarCards(item.key);
+}
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem("otaku-historico-v1")) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveHistory() {
+  try {
+    localStorage.setItem("otaku-historico-v1", JSON.stringify(historico));
+  } catch (e) {}
+}
+
+// O título que abriste fica no topo do histórico (sem repetidos)
+function registrarHistorico(item) {
+  historico = [{ ...item }, ...historico.filter((i) => i.key !== item.key)].slice(0, MAX_HISTORICO);
+  saveHistory();
+}
+
+function limparHistorico() {
+  historico = [];
+  saveHistory();
+  renderLibrary();
 }
 
 
@@ -370,12 +436,13 @@ async function getDoramasTmdb({ pagina = 1, idioma = "ko", genero = "", q = "" }
 }
 
 async function getDramas(query = "") {
-  if (temServidor()) {
+  if (temServidor() && !tmdbIndisponivel) {
     try {
       const r = await getDoramasTmdb({ q: query });
       return query ? r.itens.slice(0, 12) : r.itens.slice(0, 9);
     } catch (e) {
       console.error("TMDB falhou, a usar a lista de reserva:", e);
+      tmdbIndisponivel = true;
     }
   }
 
@@ -414,6 +481,7 @@ function createCard(item) {
   const card = document.createElement("article");
   card.className = "anime-card" + (isSaved(item.key) ? " na-lista" : "");
   card.dataset.key = item.key;
+  card.dataset.estado = isSaved(item.key) ? estadoDe(item.key) : "";
 
   const tipo = item.type === "anime" ? "ANIME" : "DORAMA";
   const estilo = item.poster
@@ -519,6 +587,7 @@ async function loadHome() {
 
 function openDetails(item) {
   showPage("details");
+  registrarHistorico(item);
   renderDetails(item);
   enriquecerDorama(item);
 }
@@ -533,6 +602,12 @@ async function enriquecerDorama(item) {
     if (!resposta.ok) throw new Error(extra.detalhe || extra.erro || "HTTP " + resposta.status);
 
     Object.assign(item, extra, { detalhado: true });
+
+    const salvo = lista.find((i) => i.key === item.key);
+    if (salvo) {
+      Object.assign(salvo, extra, { detalhado: true });
+      saveList();
+    }
 
     if (!$("details-page").hidden && $("details-content").dataset.key === item.key) {
       renderDetails(item);
@@ -586,14 +661,25 @@ function renderDetails(item) {
       <a class="trailer-btn" href="${escapeHTML(trailer)}" target="_blank" rel="noopener">▶ Trailer</a>
       <button id="list-btn" class="primary-btn"></button>
     </div>
+    <div id="status-bar" class="filters" hidden>
+      ${ESTADOS_LISTA.map((e) => `<button data-estado="${e.id}">${e.nome}</button>`).join("")}
+    </div>
   `;
 
   const botao = $("list-btn");
 
+  const barra = $("status-bar");
+
   const atualizar = () => {
-    botao.textContent = isSaved(item.key)
-      ? "✅ Na tua lista (remover)"
-      : "➕ Adicionar à Minha Lista";
+    const salvo = isSaved(item.key);
+    const atual = salvo ? estadoDe(item.key) : "";
+
+    botao.textContent = salvo ? "🗑️ Remover da lista" : "➕ Adicionar à Minha Lista";
+    barra.hidden = !salvo;
+
+    barra
+      .querySelectorAll("button")
+      .forEach((b) => b.classList.toggle("filter-active", b.dataset.estado === atual));
   };
 
   atualizar();
@@ -602,6 +688,13 @@ function renderDetails(item) {
     toggleSaved(item);
     atualizar();
   });
+
+  barra.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      definirEstado(item, b.dataset.estado);
+      atualizar();
+    })
+  );
 }
 
 
@@ -889,7 +982,7 @@ function selectGenre(slug) {
     .querySelectorAll("#genre-bar button")
     .forEach((b) => b.classList.toggle("filter-active", b.dataset.slug === slug));
 
-  $("dorama-bar").hidden = !(slug === "dorama" && temServidor());
+  $("dorama-bar").hidden = !(slug === "dorama" && temServidor() && !tmdbIndisponivel);
 
   loadMore();
 }
@@ -914,15 +1007,25 @@ async function loadMore() {
   let itens = [];
 
   try {
-    if (estado.slug === "dorama" && temServidor()) {
-      const r = await getDoramasTmdb({
-        pagina: estado.pagina,
-        idioma: filtroDorama.idioma,
-        genero: filtroDorama.genero
-      });
-      itens = r.itens;
-      estado.pagina += 1;
-      estado.fim = estado.pagina > r.totalPaginas;
+    if (estado.slug === "dorama" && temServidor() && !tmdbIndisponivel) {
+      try {
+        const r = await getDoramasTmdb({
+          pagina: estado.pagina,
+          idioma: filtroDorama.idioma,
+          genero: filtroDorama.genero
+        });
+        itens = r.itens;
+        estado.pagina += 1;
+        estado.fim = estado.pagina > r.totalPaginas;
+      } catch (e) {
+        // Sem TMDB na primeira página: usa a lista de reserva em vez de mostrar erro
+        if (estado.pagina > 1) throw e;
+        console.error("TMDB falhou, a usar a lista de reserva:", e);
+        tmdbIndisponivel = true;
+        $("dorama-bar").hidden = true;
+        itens = await getDramasTvmaze();
+        estado.fim = true;
+      }
     } else if (estado.slug === "dorama") {
       itens = await getDramasTvmaze();
       estado.fim = true;
@@ -961,12 +1064,51 @@ async function loadMore() {
   botao.hidden = estado.fim;
 }
 
+function buildLibraryTabs() {
+  const barra = $("library-tabs");
+
+  ABAS_LISTA.forEach((aba) => {
+    const botao = document.createElement("button");
+    botao.dataset.aba = aba.id;
+    botao.addEventListener("click", () => {
+      abaLista = aba.id;
+      renderLibrary();
+    });
+    barra.appendChild(botao);
+  });
+}
+
 function renderLibrary() {
-  renderList(
-    "library-list",
-    lista,
-    "A tua lista está vazia. Abre um anime ou dorama e toca em Adicionar."
-  );
+  const contagem = {
+    todos: lista.length,
+    quero: lista.filter((i) => (i.estado || "quero") === "quero").length,
+    vendo: lista.filter((i) => i.estado === "vendo").length,
+    concluido: lista.filter((i) => i.estado === "concluido").length,
+    historico: historico.length
+  };
+
+  document.querySelectorAll("#library-tabs button").forEach((b) => {
+    const aba = ABAS_LISTA.find((a) => a.id === b.dataset.aba);
+    b.textContent = aba.nome + " (" + contagem[aba.id] + ")";
+    b.classList.toggle("filter-active", aba.id === abaLista);
+  });
+
+  $("clear-history").hidden = !(abaLista === "historico" && historico.length);
+
+  if (abaLista === "historico") {
+    renderList("library-list", historico, "Ainda não abriste nenhum título.");
+    return;
+  }
+
+  const itens =
+    abaLista === "todos" ? lista : lista.filter((i) => (i.estado || "quero") === abaLista);
+
+  const vazio =
+    abaLista === "todos"
+      ? "A tua lista está vazia. Abre um anime ou dorama e toca em Adicionar."
+      : "Ainda não tens nada nesta categoria.";
+
+  renderList("library-list", [...itens].reverse(), vazio);   // mais recentes primeiro
 }
 
 function openLibrary() {
@@ -982,6 +1124,7 @@ function openLibrary() {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupFilters();
+  buildLibraryTabs();
 
   $("search-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") performSearch();

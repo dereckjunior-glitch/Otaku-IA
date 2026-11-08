@@ -139,6 +139,9 @@
       line-height: 1.6;
       text-align: center;
     }
+
+    .anime-card[data-estado="quero"] .poster::after { content: "🕒"; }
+    .anime-card[data-estado="vendo"] .poster::after { content: "▶️"; }
   </style>
 </head>
 
@@ -235,7 +238,9 @@
     <div id="library-page" class="page" hidden>
       <section class="section">
         <div class="section-title"><h2>📚 Minha Lista</h2></div>
+        <div id="library-tabs" class="filters genre-bar"></div>
         <div id="library-list" class="anime-grid"></div>
+        <button id="clear-history" class="more-btn" onclick="limparHistorico()" hidden>Limpar histórico</button>
       </section>
     </div>
 
