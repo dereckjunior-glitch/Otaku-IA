@@ -1,17 +1,43 @@
 const ANILIST_API = "https://graphql.anilist.co";
 const TVMAZE_API = "https://api.tvmaze.com";
 
-// Doramas populares (o TVMaze é um catálogo geral de séries, por isso usamos nomes)
-const DORAMAS_POPULARES = [
-  "Squid Game",
-  "Crash Landing on You",
-  "Itaewon Class",
-  "Hospital Playlist",
-  "Descendants of the Sun",
-  "Vincenzo",
-  "Extraordinary Attorney Woo",
-  "The Glory"
-];
+// Doramas populares por país. O TVMaze é um catálogo geral de séries e não separa doramas,
+// por isso procuramos cada título pelo nome e só aceitamos o resultado no idioma certo.
+const DORAMAS_CURADOS = {
+  ko: [
+    "Crash Landing on You", "Squid Game", "Itaewon Class", "Hospital Playlist",
+    "Descendants of the Sun", "Vincenzo", "Extraordinary Attorney Woo", "The Glory",
+    "Reply 1988", "My Love from the Star", "Boys Over Flowers", "Business Proposal",
+    "Hometown Cha-Cha-Cha", "Our Beloved Summer", "Hotel del Luna", "True Beauty",
+    "What's Wrong with Secretary Kim", "My Mister", "Signal", "Kingdom",
+    "Sweet Home", "All of Us Are Dead", "Mr. Sunshine", "It's Okay to Not Be Okay",
+    "Start-Up", "Healer", "W: Two Worlds", "While You Were Sleeping",
+    "Queen of Tears", "Moving", "Lovely Runner", "Reborn Rich",
+    "Alchemy of Souls", "My Name", "Hellbound", "The Penthouse",
+    "SKY Castle", "Flower of Evil", "Mr. Queen", "Weak Hero Class 1"
+  ],
+  ja: [
+    "Alice in Borderland", "Midnight Diner", "Hanzawa Naoki", "Nodame Cantabile",
+    "Hana Yori Dango", "Great Teacher Onizuka", "The Naked Director", "First Love"
+  ],
+  zh: [
+    "The Untamed", "Nirvana in Fire", "Love O2O", "Story of Yanxi Palace",
+    "Go Go Squid!", "Ashes of Love", "The Journey of Flower", "Meteor Garden",
+    "Love Between Fairy and Devil", "Eternal Love", "Hidden Love"
+  ],
+  th: [
+    "Girl from Nowhere", "2gether: The Series", "Bad Buddy",
+    "Love by Chance", "Manner of Death", "KinnPorsche"
+  ]
+};
+
+// Nome do idioma no TVMaze para cada país
+const IDIOMAS_TVMAZE = {
+  ko: ["Korean"],
+  ja: ["Japanese"],
+  zh: ["Chinese", "Mandarin"],
+  th: ["Thai"]
+};
 
 const IDIOMAS_DORAMA = ["Korean", "Japanese", "Chinese", "Mandarin", "Thai"];
 
@@ -44,14 +70,15 @@ const PAISES_DORAMA = [
 ];
 
 const GENEROS_DORAMA = [
-  { nome: "Todos", id: "" },
-  { nome: "Drama", id: "18" },
-  { nome: "Comédia", id: "35" },
-  { nome: "Mistério", id: "9648" },
-  { nome: "Crime", id: "80" },
-  { nome: "Ação e aventura", id: "10759" },
-  { nome: "Ficção e fantasia", id: "10765" },
-  { nome: "Família", id: "10751" }
+  { nome: "Todos", id: "", pt: [] },
+  { nome: "Romance", id: "romance", pt: ["Romance"] },
+  { nome: "Drama", id: "18", pt: ["Drama"] },
+  { nome: "Comédia", id: "35", pt: ["Comédia"] },
+  { nome: "Mistério", id: "9648", pt: ["Mistério", "Suspense"] },
+  { nome: "Crime", id: "80", pt: ["Crime"] },
+  { nome: "Ação e aventura", id: "10759", pt: ["Ação", "Aventura"] },
+  { nome: "Ficção e fantasia", id: "10765", pt: ["Fantasia", "Ficção científica", "Sobrenatural"] },
+  { nome: "Família", id: "10751", pt: ["Família"] }
 ];
 
 const POR_PAGINA = 12;
@@ -83,7 +110,7 @@ const GENERO_PT = {
   Psychological: "Psicológico", Crime: "Crime", Family: "Família", Music: "Música",
   Medical: "Médico", War: "Guerra", History: "História", Military: "Militar",
   Mecha: "Mecha", Magic: "Magia", School: "Escola", "School Life": "Vida escolar",
-  "Sci-Fi": "Ficção científica", "Mahou Shoujo": "Mahou shoujo", Ecchi: "Ecchi"
+  "Sci-Fi": "Ficção científica", "Science-Fiction": "Ficção científica", "Mahou Shoujo": "Mahou shoujo", Ecchi: "Ecchi"
 };
 
 const ESTADO_PT = {
@@ -118,10 +145,38 @@ const ABAS_LISTA = [
 
 const MAX_HISTORICO = 30;
 
+// Traduções da secção "mais informações" dos detalhes
+const SEASON_PT = { WINTER: "Inverno", SPRING: "Primavera", SUMMER: "Verão", FALL: "Outono" };
+
+const ORIGEM_PT = {
+  ORIGINAL: "Original", MANGA: "Mangá", LIGHT_NOVEL: "Light novel", NOVEL: "Romance",
+  VISUAL_NOVEL: "Visual novel", VIDEO_GAME: "Jogo", GAME: "Jogo", WEB_NOVEL: "Web novel",
+  DOUJINSHI: "Doujinshi", ANIME: "Anime", LIVE_ACTION: "Live-action", COMIC: "Quadrinhos",
+  MULTIMEDIA_PROJECT: "Projeto multimédia", OTHER: "Outro"
+};
+
+const REL_PT = {
+  PARENT: "Principal", PREQUEL: "Anterior", SEQUEL: "Seguinte",
+  SIDE_STORY: "História paralela", SPIN_OFF: "Spin-off"
+};
+const REL_ORDEM = ["PARENT", "PREQUEL", "SEQUEL", "SIDE_STORY", "SPIN_OFF"];
+
+const CLASSIFICACAO_PT = {
+  "G - All Ages": "Livre",
+  "PG - Children": "Crianças (PG)",
+  "PG-13 - Teens 13 or older": "13+ (PG-13)",
+  "R - 17+ (violence & profanity)": "17+ (R)",
+  "R+ - Mild Nudity": "17+ (R+, nudez leve)"
+};
+
 let currentType = "all";
 let lista = loadList();
 let historico = loadHistory();
 let abaLista = "todos";
+let extrasCache = {};       // dados extra dos detalhes (só em memória)
+let estadoExtras = {};      // "carregando" | "ok" | "erro"
+let atualDetalhe = null;
+let pilhaDetalhes = [];     // para o botão Voltar entre detalhes
 let lastPage = "home";
 let homeLoaded = false;
 let pedido = 0;
@@ -455,7 +510,7 @@ function toShowItem(show) {
 
 async function getDoramasTmdb({ pagina = 1, idioma = "ko", genero = "", q = "" } = {}) {
   const params = new URLSearchParams({ pagina, idioma });
-  if (genero) params.set("genero", genero);
+  if (/^\d+$/.test(genero)) params.set("genero", genero);
   if (q) params.set("q", q);
 
   const resposta = await fetch(servidorUrl("/dorama?" + params.toString()));
@@ -479,6 +534,61 @@ async function getDramas(query = "") {
   return getDramasTvmaze(query);
 }
 
+// Guarda no telemóvel o que já foi encontrado, para abrir mais rápido e gastar menos pedidos
+function carregarCacheDoramas() {
+  try {
+    return JSON.parse(localStorage.getItem("otaku-doramas-v1")) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+let cacheDoramas = carregarCacheDoramas();
+
+function guardarCacheDoramas() {
+  try {
+    localStorage.setItem("otaku-doramas-v1", JSON.stringify(cacheDoramas));
+  } catch (e) {}
+}
+
+async function doramaPorNome(nome, idioma) {
+  const chave = idioma + ":" + nome;
+  if (chave in cacheDoramas) return cacheDoramas[chave];   // pode ser null = não encontrado
+
+  const resultado = await getJSON(TVMAZE_API + "/search/shows?q=" + encodeURIComponent(nome));
+  const achado = resultado
+    .map((x) => x.show)
+    .find((show) => (IDIOMAS_TVMAZE[idioma] || []).includes(show.language));
+
+  cacheDoramas[chave] = achado ? toShowItem(achado) : null;
+  guardarCacheDoramas();
+
+  return cacheDoramas[chave];
+}
+
+// Devolve os próximos doramas da lista curada (do país e género escolhidos)
+async function doramasReserva({ idioma = "ko", genero = "", cursor = 0, quantidade = 12 } = {}) {
+  const nomes = DORAMAS_CURADOS[idioma] || [];
+  const alvo = GENEROS_DORAMA.find((g) => g.id === genero)?.pt || [];
+  const itens = [];
+
+  while (cursor < nomes.length && itens.length < quantidade) {
+    const falta = Math.min(12, Math.max(3, quantidade - itens.length));   // pede só os que faltam (no máximo 12 de uma vez)
+    const lote = nomes.slice(cursor, cursor + falta);
+    cursor += lote.length;
+
+    const respostas = await Promise.allSettled(lote.map((nome) => doramaPorNome(nome, idioma)));
+
+    respostas.forEach((r) => {
+      if (r.status !== "fulfilled" || !r.value) return;
+      if (alvo.length && !(r.value.genres || []).some((g) => alvo.includes(g))) return;
+      itens.push(r.value);
+    });
+  }
+
+  return { itens, cursor, fim: cursor >= nomes.length };
+}
+
 async function getDramasTvmaze(query = "") {
   if (query) {
     const result = await getJSON(
@@ -491,15 +601,8 @@ async function getDramasTvmaze(query = "") {
       .map(toShowItem);
   }
 
-  const respostas = await Promise.allSettled(
-    DORAMAS_POPULARES.map((nome) =>
-      getJSON(TVMAZE_API + "/singlesearch/shows?q=" + encodeURIComponent(nome))
-    )
-  );
-
-  return respostas
-    .filter((r) => r.status === "fulfilled")
-    .map((r) => toShowItem(r.value));
+  const r = await doramasReserva({ idioma: "ko", quantidade: 9 });
+  return r.itens.slice(0, 9);
 }
 
 
@@ -592,6 +695,15 @@ function goHome() {
 }
 
 function goBack() {
+  if (pilhaDetalhes.length) {
+    const anterior = pilhaDetalhes.pop();
+    atualDetalhe = anterior;
+    renderDetails(anterior);
+    carregarExtras(anterior);
+    window.scrollTo({ top: 0 });
+    return;
+  }
+
   showPage(lastPage);
   if (lastPage === "library") renderLibrary();
 }
@@ -619,11 +731,284 @@ async function loadHome() {
    DETALHES
 ================================ */
 
+/* ===============================
+   DETALHES EXTRA (personagens, episódios, semelhantes, informações)
+================================ */
+
+function suportaExtras(item) {
+  return item.key.startsWith("anime-al-") || /^dorama-\d+$/.test(item.key);
+}
+
+function dataCurta(valor) {
+  if (!valor) return "";
+
+  const d =
+    typeof valor === "number"
+      ? new Date(valor * 1000)
+      : new Date(String(valor).length === 10 ? valor + "T12:00:00" : valor);
+
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("pt-PT", { day: "numeric", month: "short", year: "numeric" });
+}
+
+async function extrasAnime(item) {
+  const id = Number(item.key.replace("anime-al-", ""));
+
+  const resposta = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ query: ANILIST_DETALHES, variables: { id } })
+  });
+
+  const json = await resposta.json().catch(() => ({}));
+  if (!resposta.ok || json.errors) {
+    throw new Error(json.errors?.[0]?.message || "AniList HTTP " + resposta.status);
+  }
+
+  const m = json.data.Media;
+
+  // Títulos dos episódios (quando existem) + datas de exibição
+  const titulosEp = {};
+  (m.streamingEpisodes || []).forEach((e) => {
+    const r = /^(?:Episode|Ep\.?)\s*(\d+)\s*[-–:]\s*(.+)$/i.exec(e.title || "");
+    if (r) titulosEp[Number(r[1])] = r[2];
+  });
+
+  let episodios = (m.airingSchedule?.nodes || []).map((n) => ({
+    numero: n.episode,
+    titulo: titulosEp[n.episode] || "",
+    data: n.airingAt
+  }));
+
+  if (!episodios.length) {
+    episodios = Object.keys(titulosEp).map((n) => ({
+      numero: Number(n),
+      titulo: titulosEp[n],
+      data: ""
+    }));
+  }
+
+  episodios.sort((a, b) => a.numero - b.numero);
+
+  const relacionados = (m.relations?.edges || [])
+    .filter((e) => REL_ORDEM.includes(e.relationType) && e.node?.type === "ANIME" && !e.node.isAdult)
+    .sort((a, b) => REL_ORDEM.indexOf(a.relationType) - REL_ORDEM.indexOf(b.relationType))
+    .slice(0, 6)
+    .map((e) => ({ rotulo: REL_PT[e.relationType], item: toAnilistItem(e.node) }));
+
+  const semelhantes = semRepetidos(
+    (m.recommendations?.nodes || [])
+      .filter((n) => n.mediaRecommendation && n.rating > 0 && !n.mediaRecommendation.isAdult)
+      .map((n) => toAnilistItem(n.mediaRecommendation)),
+    new Set([baseTitulo(item.title)])
+  ).slice(0, 6);
+
+  const temporada = m.season ? (SEASON_PT[m.season] || m.season) + " " + (m.seasonYear || "") : "";
+
+  const info = [
+    ["Estúdio", (m.studios?.nodes || []).map((s) => s.name).join(", ")],
+    ["Temporada", temporada.trim()],
+    ["Formato", TIPO_PT[m.format] || m.format || ""],
+    ["Origem", ORIGEM_PT[m.source] || m.source || ""],
+    ["Episódios", m.episodes ? String(m.episodes) : ""]
+  ].filter(([, valor]) => valor);
+
+  const links = [];
+  if (m.siteUrl) links.push({ nome: "AniList", url: m.siteUrl });
+  if (m.idMal) links.push({ nome: "MyAnimeList", url: "https://myanimelist.net/anime/" + m.idMal });
+
+  return {
+    personagens: (m.characters?.nodes || [])
+      .map((c) => ({ nome: c.name?.full || "", imagem: https(c.image?.medium) }))
+      .filter((c) => c.nome),
+    episodios,
+    relacionados,
+    semelhantes,
+    info,
+    links,
+    idMal: m.idMal || null
+  };
+}
+
+async function extrasDorama(item) {
+  const id = item.key.replace("dorama-", "");
+  const s = await getJSON(TVMAZE_API + "/shows/" + id + "?embed[]=cast&embed[]=episodes");
+
+  const vistos = new Set();
+  const personagens = [];
+
+  (s._embedded?.cast || []).forEach((c) => {
+    const nome = c.character?.name;
+    if (!nome || vistos.has(nome)) return;
+    vistos.add(nome);
+    personagens.push({ nome, imagem: https(c.character?.image?.medium || c.person?.image?.medium) });
+  });
+
+  const episodios = (s._embedded?.episodes || [])
+    .filter((e) => e.number != null)
+    .map((e) => ({ temporada: e.season, numero: e.number, titulo: e.name || "", data: e.airdate }));
+
+  const duracao = s.averageRuntime || s.runtime;
+
+  const info = [
+    ["Canal", s.network?.name || s.webChannel?.name || ""],
+    ["País", s.network?.country?.name || s.webChannel?.country?.name || ""],
+    ["Estreia", dataCurta(s.premiered)],
+    ["Idioma", s.language || ""],
+    ["Duração", duracao ? duracao + " min" : ""],
+    ["Estado", ESTADO_PT[s.status] || s.status || ""]
+  ].filter(([, valor]) => valor);
+
+  const links = [];
+  if (s.url) links.push({ nome: "TVMaze", url: s.url });
+  if (s.officialSite) links.push({ nome: "Site oficial", url: s.officialSite });
+
+  return {
+    personagens: personagens.slice(0, 9),
+    episodios,
+    relacionados: [],
+    semelhantes: [],
+    info,
+    links,
+    idMal: null
+  };
+}
+
+// Classificação etária: o AniList não tem, por isso tentamos o MyAnimeList (via Jikan). Se falhar, não aparece.
+async function buscarClassificacao(item, idMal) {
+  try {
+    const resposta = await fetch("https://api.jikan.moe/v4/anime/" + idMal);
+    if (!resposta.ok) return;
+
+    const dados = await resposta.json();
+    const rating = dados.data?.rating;
+    const extra = extrasCache[item.key];
+    if (!rating || !extra) return;
+
+    extra.info.push(["Classificação", CLASSIFICACAO_PT[rating] || rating]);
+    atualizarDetalhes(item);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function atualizarDetalhes(item) {
+  if (!$("details-page").hidden && $("details-content").dataset.key === item.key) {
+    renderDetails(item);
+  }
+}
+
+async function carregarExtras(item) {
+  if (!suportaExtras(item) || extrasCache[item.key] || estadoExtras[item.key] === "carregando") return;
+
+  estadoExtras[item.key] = "carregando";
+
+  try {
+    extrasCache[item.key] = item.key.startsWith("anime-al-")
+      ? await extrasAnime(item)
+      : await extrasDorama(item);
+    estadoExtras[item.key] = "ok";
+  } catch (e) {
+    console.error(e);
+    estadoExtras[item.key] = "erro";
+  }
+
+  atualizarDetalhes(item);
+
+  const extra = extrasCache[item.key];
+  if (extra?.idMal) buscarClassificacao(item, extra.idMal);
+}
+
+// HTML das secções extra (os cards de semelhantes e relacionados são montados depois)
+function blocoExtras(item) {
+  if (!suportaExtras(item)) return "";
+
+  const estado = estadoExtras[item.key];
+  const x = extrasCache[item.key];
+
+  if (estado === "erro") {
+    return `<p class="details-meta">Não foi possível carregar mais informações.</p>`;
+  }
+
+  if (!x) return `<p class="details-meta">Carregando mais informações...</p>`;
+
+  let html = "";
+
+  if (x.info.length) {
+    html += `<h3 class="det-titulo">ℹ️ Informações</h3><div class="info-lista">${x.info
+      .map(([k, v]) => `<p><span>${escapeHTML(k)}:</span> ${escapeHTML(v)}</p>`)
+      .join("")}</div>`;
+  }
+
+  if (x.personagens.length) {
+    html += `<h3 class="det-titulo">👥 Personagens principais</h3><div class="chars">${x.personagens
+      .map((c) => {
+        const estilo = c.imagem ? ` style="background-image:url('${escapeHTML(c.imagem)}')"` : "";
+        return `<div class="char"><div class="char-img real-poster"${estilo}></div><p>${escapeHTML(c.nome)}</p></div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  if (x.episodios.length) {
+    const total = item.episodes && item.episodes !== "N/A" ? item.episodes : x.episodios.length;
+    const titulo = x.episodios.length < Number(total) ? x.episodios.length + " de " + total : String(x.episodios.length);
+
+    html += `<h3 class="det-titulo">📺 Episódios</h3><details class="eps"><summary>Ver lista (${titulo})</summary>${x.episodios
+      .map((e) => {
+        const nome = (e.temporada ? "T" + e.temporada + " " : "") + "Ep. " + e.numero;
+        const data = dataCurta(e.data);
+        return `<p class="ep"><b>${escapeHTML(nome)}</b>${e.titulo ? " • " + escapeHTML(e.titulo) : ""}${data ? " <span>" + escapeHTML(data) + "</span>" : ""}</p>`;
+      })
+      .join("")}</details>`;
+  }
+
+  if (x.relacionados.length) {
+    html += `<h3 class="det-titulo">🔗 Temporadas e relacionados</h3><div id="det-relacionados" class="anime-grid"></div>`;
+  }
+
+  if (x.semelhantes.length) {
+    html += `<h3 class="det-titulo">✨ Semelhantes</h3><div id="det-semelhantes" class="anime-grid"></div>`;
+  }
+
+  if (x.links.length) {
+    html += `<h3 class="det-titulo">📚 Fontes</h3><p class="fontes">${x.links
+      .map((l) => `<a href="${escapeHTML(l.url)}" target="_blank" rel="noopener">${escapeHTML(l.nome)}</a>`)
+      .join("")}</p>`;
+  }
+
+  return html;
+}
+
+function montarExtras(item) {
+  const x = extrasCache[item.key];
+  if (!x) return;
+
+  const rel = $("det-relacionados");
+  if (rel) {
+    x.relacionados.forEach(({ rotulo, item: it }) => {
+      const celula = document.createElement("div");
+      celula.innerHTML = `<div class="rotulo">${escapeHTML(rotulo)}</div>`;
+      celula.appendChild(createCard(it));
+      rel.appendChild(celula);
+    });
+  }
+
+  const sem = $("det-semelhantes");
+  if (sem) x.semelhantes.forEach((it) => sem.appendChild(createCard(it)));
+}
+
 function openDetails(item) {
+  // Se já estamos nos detalhes (ex.: tocou num título semelhante), guarda o anterior para o Voltar
+  if (!$("details-page").hidden && atualDetalhe) pilhaDetalhes.push(atualDetalhe);
+  else pilhaDetalhes = [];
+
+  atualDetalhe = item;
+
   showPage("details");
   registrarHistorico(item);
   renderDetails(item);
   enriquecerDorama(item);
+  carregarExtras(item);
 }
 
 // Doramas do TMDB: busca episódios, estado, canal e trailer ao abrir os detalhes
@@ -699,6 +1084,8 @@ function renderDetails(item) {
     <div id="status-bar" class="filters" hidden>
       ${ESTADOS_LISTA.map((e) => `<button data-estado="${e.id}">${e.nome}</button>`).join("")}
     </div>
+
+    ${blocoExtras(item)}
   `;
 
   const botao = $("list-btn");
@@ -730,6 +1117,8 @@ function renderDetails(item) {
       atualizar();
     })
   );
+
+  montarExtras(item);
 }
 
 
@@ -1013,13 +1402,13 @@ function openExplore(slug) {
 }
 
 function selectGenre(slug) {
-  explorar = { slug, offset: 0, pagina: 1, fim: false, carregando: false, vistos: new Set() };
+  explorar = { slug, offset: 0, pagina: 1, cursor: 0, fim: false, carregando: false, vistos: new Set() };
 
   document
     .querySelectorAll("#genre-bar button")
     .forEach((b) => b.classList.toggle("filter-active", b.dataset.slug === slug));
 
-  $("dorama-bar").hidden = !(slug === "dorama" && temServidor() && !tmdbIndisponivel);
+  $("dorama-bar").hidden = slug !== "dorama";
 
   loadMore();
 }
@@ -1029,7 +1418,7 @@ async function loadMore() {
   if (!estado || estado.carregando || estado.fim) return;
   estado.carregando = true;
 
-  const primeira = estado.offset === 0 && estado.pagina === 1;
+  const primeira = estado.offset === 0 && estado.pagina === 1 && !estado.cursor;
   const botao = $("more-btn");
 
   if (primeira) {
@@ -1059,13 +1448,24 @@ async function loadMore() {
         if (estado.pagina > 1) throw e;
         console.error("TMDB falhou, a usar a lista de reserva:", e);
         tmdbIndisponivel = true;
-        $("dorama-bar").hidden = true;
-        itens = await getDramasTvmaze();
-        estado.fim = true;
+        const r = await doramasReserva({
+          idioma: filtroDorama.idioma,
+          genero: filtroDorama.genero,
+          cursor: 0
+        });
+        itens = r.itens;
+        estado.cursor = r.cursor;
+        estado.fim = r.fim;
       }
     } else if (estado.slug === "dorama") {
-      itens = await getDramasTvmaze();
-      estado.fim = true;
+      const r = await doramasReserva({
+        idioma: filtroDorama.idioma,
+        genero: filtroDorama.genero,
+        cursor: estado.cursor
+      });
+      itens = r.itens;
+      estado.cursor = r.cursor;
+      estado.fim = r.fim;
     } else {
       const emExibicao = estado.slug === "lancamentos";
       const pagina = await getAnimePage(
@@ -1154,6 +1554,49 @@ function renderLibrary() {
 
   renderList("library-list", [...itens].reverse(), vazio);   // mais recentes primeiro
 }
+
+const ANILIST_DETALHES = `
+fragment Cartao on Media {
+  id
+  type
+  isAdult
+  title { romaji english }
+  coverImage { large }
+  description(asHtml: false)
+  averageScore
+  episodes
+  duration
+  status
+  format
+  genres
+  seasonYear
+  startDate { year }
+  trailer { id site }
+  nextAiringEpisode { episode airingAt }
+}
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    idMal
+    siteUrl
+    season
+    seasonYear
+    format
+    source
+    episodes
+    studios(isMain: true) { nodes { name } }
+    characters(role: MAIN, sort: [RELEVANCE, ID], perPage: 9) {
+      nodes { id name { full } image { medium } }
+    }
+    relations {
+      edges { relationType node { ...Cartao } }
+    }
+    recommendations(sort: RATING_DESC, perPage: 9) {
+      nodes { rating mediaRecommendation { ...Cartao } }
+    }
+    airingSchedule(perPage: 100) { nodes { episode airingAt } }
+    streamingEpisodes { title }
+  }
+}`;
 
 const ANILIST_PROXIMOS = `
 query ($ids: [Int], $perPage: Int) {
