@@ -18,6 +18,7 @@ const IDIOMAS_DORAMA = ["Korean", "Japanese", "Chinese", "Mandarin", "Thai"];
 // Botões de género da página Explorar (nome do género no AniList; "dorama" = lista de doramas)
 const GENEROS_CHIPS = [
   { nome: "Todos", slug: "" },
+  { nome: "📅 Lançamentos", slug: "lancamentos" },
   { nome: "Ação", slug: "Action" },
   { nome: "Aventura", slug: "Adventure" },
   { nome: "Comédia", slug: "Comedy" },
@@ -297,7 +298,7 @@ function limparHistorico() {
 ================================ */
 
 const ANILIST_QUERY = `
-query ($page: Int, $perPage: Int, $search: String, $genre: String, $sort: [MediaSort], $minPop: Int) {
+query ($page: Int, $perPage: Int, $search: String, $genre: String, $sort: [MediaSort], $minPop: Int, $status: MediaStatus) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage }
     media(
@@ -307,6 +308,7 @@ query ($page: Int, $perPage: Int, $search: String, $genre: String, $sort: [Media
       genre: $genre
       sort: $sort
       popularity_greater: $minPop
+      status: $status
       format_in: [TV, TV_SHORT, MOVIE, OVA, ONA]
     ) {
       id
@@ -322,6 +324,7 @@ query ($page: Int, $perPage: Int, $search: String, $genre: String, $sort: [Media
       seasonYear
       startDate { year }
       trailer { id site }
+      nextAiringEpisode { episode airingAt }
     }
   }
 }`;
@@ -335,6 +338,23 @@ function limparDescricao(texto) {
     .trim();
 
   return limpo || "Sinopse não disponível.";
+}
+
+// "Ep. 5 • em 2d 3h" (vazio se não houver próximo episódio ou se ele já saiu)
+function textoProximo(p) {
+  if (!p || !p.quando) return "";
+
+  const min = Math.round((p.quando * 1000 - Date.now()) / 60000);
+  if (min <= 0) return "";
+
+  const dias = Math.floor(min / 1440);
+  const horas = Math.floor((min % 1440) / 60);
+  const resto = min % 60;
+
+  const quando =
+    dias > 0 ? dias + "d " + horas + "h" : horas > 0 ? horas + "h " + resto + "min" : resto + "min";
+
+  return "Ep. " + p.ep + " • em " + quando;
 }
 
 function toAnilistItem(m) {
@@ -356,7 +376,10 @@ function toAnilistItem(m) {
       m.trailer?.site === "youtube" && m.trailer?.id
         ? "https://www.youtube.com/watch?v=" + m.trailer.id
         : "",
-    genres: (m.genres || []).map((g) => GENERO_PT[g] || g).slice(0, 5)
+    genres: (m.genres || []).map((g) => GENERO_PT[g] || g).slice(0, 5),
+    proximo: m.nextAiringEpisode
+      ? { ep: m.nextAiringEpisode.episode, quando: m.nextAiringEpisode.airingAt }
+      : null
   };
 }
 
@@ -376,7 +399,7 @@ async function anilist(variaveis) {
   return json.data.Page;
 }
 
-async function getAnimePage(query = "", categoria = "", limit = 10, offset = 0) {
+async function getAnimePage(query = "", categoria = "", limit = 10, offset = 0, extra = {}) {
   const variaveis = {
     page: Math.floor(offset / limit) + 1,
     perPage: limit,
@@ -386,6 +409,13 @@ async function getAnimePage(query = "", categoria = "", limit = 10, offset = 0) 
   if (query) variaveis.search = query;
   else variaveis.minPop = 30000;          // só animes conhecidos, para a lista não ter títulos obscuros
   if (categoria) variaveis.genre = categoria;
+
+  // Lançamentos: animes que estão a ser exibidos agora, dos mais populares
+  if (extra.emExibicao) {
+    variaveis.status = "RELEASING";
+    variaveis.sort = ["POPULARITY_DESC"];
+    delete variaveis.minPop;
+  }
 
   const pagina = await anilist(variaveis);
   const media = pagina.media || [];
@@ -484,6 +514,7 @@ function createCard(item) {
   card.dataset.estado = isSaved(item.key) ? estadoDe(item.key) : "";
 
   const tipo = item.type === "anime" ? "ANIME" : "DORAMA";
+  const prox = textoProximo(item.proximo);
   const estilo = item.poster
     ? ` style="background-image:url('${escapeHTML(item.poster)}')"`
     : "";
@@ -492,7 +523,7 @@ function createCard(item) {
     <div class="poster real-poster"${estilo}>${item.poster ? "" : tipo}</div>
     <div class="anime-info">
       <h3>${escapeHTML(item.title)}</h3>
-      <p>${tipo}${item.score !== "N/A" ? " • ⭐ " + escapeHTML(item.score) : ""}</p>
+      <p>${tipo}${item.score !== "N/A" ? " • ⭐ " + escapeHTML(item.score) : ""}${prox ? "<br>📅 " + escapeHTML(prox) : ""}</p>
     </div>
   `;
 
@@ -568,16 +599,19 @@ function goBack() {
 async function loadHome() {
   showLoading("featured-list", "Carregando animes...");
   showLoading("dorama-list", "Carregando doramas...");
+  showLoading("airing-list", "Carregando lançamentos...");
 
-  const [anime, dramas] = await Promise.allSettled([
+  const [anime, dramas, emExibicao] = await Promise.allSettled([
     getAnime("", "", 9).then((a) => semRepetidos(a).slice(0, 6)),
-    getDramas()
+    getDramas(),
+    getAnimePage("", "", 9, 0, { emExibicao: true }).then((p) => semRepetidos(p.itens).slice(0, 6))
   ]);
 
   const okAnime = renderResult("featured-list", anime);
   const okDrama = renderResult("dorama-list", dramas);
+  const okExibicao = renderResult("airing-list", emExibicao);
 
-  homeLoaded = okAnime && okDrama;
+  homeLoaded = okAnime && okDrama && okExibicao;
 }
 
 
@@ -631,6 +665,7 @@ function renderDetails(item) {
       : "",
     item.network ? "📺 " + item.network : "",
     "Estado: " + (ESTADO_PT[item.status] || item.status),
+    textoProximo(item.proximo) ? "📅 Próximo: " + textoProximo(item.proximo) : "",
     item.genres?.length ? "🏷️ " + item.genres.join(", ") : ""
   ].filter(Boolean);
   const trailer =
@@ -964,14 +999,16 @@ function marcarDoramaBars() {
     .forEach((b) => b.classList.toggle("filter-active", b.dataset.id === filtroDorama.genero));
 }
 
-function openExplore() {
+function openExplore(slug) {
   showPage("explore");
   setNav(1);
 
   if (!explorar) {
     buildChips();
     buildDoramaBars();
-    selectGenre("");
+    selectGenre(slug || "");
+  } else if (slug !== undefined && explorar.slug !== slug) {
+    selectGenre(slug);
   }
 }
 
@@ -1030,7 +1067,14 @@ async function loadMore() {
       itens = await getDramasTvmaze();
       estado.fim = true;
     } else {
-      const pagina = await getAnimePage("", estado.slug, POR_PAGINA, estado.offset);
+      const emExibicao = estado.slug === "lancamentos";
+      const pagina = await getAnimePage(
+        "",
+        emExibicao ? "" : estado.slug,
+        POR_PAGINA,
+        estado.offset,
+        { emExibicao }
+      );
       itens = semRepetidos(pagina.itens, estado.vistos);
       estado.offset += POR_PAGINA;
       estado.fim = !pagina.temMais;
@@ -1111,10 +1155,71 @@ function renderLibrary() {
   renderList("library-list", [...itens].reverse(), vazio);   // mais recentes primeiro
 }
 
+const ANILIST_PROXIMOS = `
+query ($ids: [Int], $perPage: Int) {
+  Page(perPage: $perPage) {
+    media(id_in: $ids, type: ANIME) {
+      id
+      status
+      nextAiringEpisode { episode airingAt }
+    }
+  }
+}`;
+
+let ultimaAtualizacaoProximos = 0;
+
+// Busca o próximo episódio dos animes da tua lista (no máximo de 10 em 10 minutos)
+async function atualizarProximos() {
+  if (Date.now() - ultimaAtualizacaoProximos < 10 * 60 * 1000) return;
+
+  const ids = lista
+    .filter((i) => i.key.startsWith("anime-al-") && i.estado !== "concluido")
+    .map((i) => Number(i.key.replace("anime-al-", "")))
+    .slice(0, 50);
+
+  if (!ids.length) return;
+  ultimaAtualizacaoProximos = Date.now();
+
+  try {
+    const resposta = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ query: ANILIST_PROXIMOS, variables: { ids, perPage: ids.length } })
+    });
+
+    const json = await resposta.json().catch(() => ({}));
+    if (!resposta.ok || json.errors) {
+      throw new Error(json.errors?.[0]?.message || "AniList HTTP " + resposta.status);
+    }
+
+    let mudou = false;
+
+    json.data.Page.media.forEach((m) => {
+      const salvo = lista.find((i) => i.key === "anime-al-" + m.id);
+      if (!salvo) return;
+
+      salvo.status = m.status;
+      salvo.proximo = m.nextAiringEpisode
+        ? { ep: m.nextAiringEpisode.episode, quando: m.nextAiringEpisode.airingAt }
+        : null;
+      mudou = true;
+    });
+
+    if (mudou) {
+      saveList();
+      if (!$("library-page").hidden) renderLibrary();
+    }
+  } catch (e) {
+    ultimaAtualizacaoProximos = 0;
+    console.error(e);
+  }
+}
+
 function openLibrary() {
   showPage("library");
   setNav(3);
   renderLibrary();
+  atualizarProximos();
 }
 
 
